@@ -1,18 +1,29 @@
-{ self, config, lib, pkgs, modulesPath, specialArgs, ... }:
+{
+  self,
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  specialArgs,
+  ...
+}:
 
 with lib;
 
 let
-  origConfig = config;
-  diskoImages = import ./create-disko-images-in-vm.nix rec {
-    inherit lib pkgs;
-    config = origConfig;
-    size = cfg.defaultDiskAllocSize;
-    inherit (cfg) compress emulateUEFI includeChannel memory;
-  };
   cfg = config.diskoImages;
+  diskoImages = import ./create-disko-images-in-vm.nix {
+    inherit lib pkgs;
+    config = origConfig; # use the original config for disko and system info
+    memory = cfg.memory;
+    compress = cfg.compress;
+    includeChannel = cfg.includeChannel;
+    emulateUEFI = cfg.emulateUEFI;
+    size = cfg.defaultDiskAllocSize;
+  };
 in
 {
+  system.build.diskoImages = diskoImages.images;
   options.diskoImages = {
     compress = mkOption {
       default = true;
@@ -41,22 +52,19 @@ in
       '';
     };
     diskAllocSizes = mkOption {
-      default = {};
+      default = { };
       description = lib.mdDoc ''
         Initial qcow2 image file size allocation (in MB) for each disko.devices.disk.xyz. Defaults to config.diskoImages.defaultDiskAllocSize
       '';
     };
-     emulateUEFI = mkOption {
-       default = config.boot.loader.efi.canTouchEfiVariables;
-       type = types.bool;
-       defaultText = literalExpression "config.boot.loader.efi.canTouchEfiVariables";
-       description = lib.mdDoc ''
-         If true will emulate UEFI for storing EFI variables, e.g. boot entries. Variables will be stored as efidisk.qcow2
-       '';
-     };
+    emulateUEFI = mkOption {
+      default = config.boot.loader.efi.canTouchEfiVariables;
+      type = types.bool;
+      defaultText = literalExpression "config.boot.loader.efi.canTouchEfiVariables";
+      description = lib.mdDoc ''
+        If true will emulate UEFI for storing EFI variables, e.g. boot entries. Variables will be stored as efidisk.qcow2
+      '';
+    };
   };
 
-  config = {
-    system.build.diskoPartyImages = diskoImages.images;
-  };
 }
