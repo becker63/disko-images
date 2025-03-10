@@ -86,7 +86,7 @@ let
       (
         pkgs.runCommand "${config.system.name}"
           {
-            memSize = 8024;
+            memSize = 12024;
             QEMU_OPTS = lib.strings.escapeShellArgs (
               lib.lists.flatten (
                 (builtins.map (disk_name: [
