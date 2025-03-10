@@ -83,6 +83,10 @@ let
         ++ (pkgs.lib.optional pkgs.stdenv.hostPlatform.isx86 "rtc_cmos");
       kernel = modulesTree;
     }).runInLinuxVM
+      {
+        # Use a persistent disk image for the VM root
+        diskImage = "root.qcow2";
+      }
       (
         pkgs.runCommand "${config.system.name}"
           {
@@ -120,24 +124,20 @@ let
                 ${pkgs.qemu}/bin/qemu-img resize efidisk.qcow2 64M
               '')
               + ''
-
                 for disk_image in ${toString (map baseNameOf disk_names)}; do
                   echo "Creating ''${disk_image}.qcow2 with size ${toString size}"
                   ${pkgs.qemu}/bin/qemu-img create -f qcow2 "''${disk_image}.qcow2" ${toString size}
                 done
               '';
-
             postVM =
               ''
                 set -x
-
               ''
               + (lib.strings.optionalString emulateUEFI ''
                 echo Compressing efidisk.qcow2
                 ${pkgs.qemu}/bin/qemu-img convert -cp -f qcow2 -O qcow2 efidisk.qcow2 ''${out}/efidisk.qcow2
               '')
               + ''
-
                 for disk_image in ${toString (map baseNameOf disk_names)}; do
                   echo Compressing "''${disk_image}.qcow2"
                   ${pkgs.qemu}/bin/qemu-img convert -p -f qcow2 -O qcow2 ${compress_args} "''${disk_image}.qcow2" "''${out}/''${disk_image}.qcow2"
@@ -149,18 +149,16 @@ let
             ''
               export PATH=${tools}:$PATH
               set -x
-
             ''
             + (lib.strings.optionalString emulateUEFI ''
               # Mount efivars
               mount -t efivarfs efivarfs /sys/firmware/efi/efivars
             '')
             + ''
-
               # Create symlinks with disko device paths pointing to /dev/vdX
-              # It's stupid, but it works
+              # Start at index 1 to skip /dev/vda (our root disk)
               local_disks=( /dev/vd{a..z} )
-              index=0
+              index=1
               for to in ${toString disk_paths}; do
                 from="''${local_disks[$index]}"
                 if [ "$from" == "$to" ]; then continue; fi
@@ -174,13 +172,21 @@ let
                 index=$(( $index + 1 ))
               done
 
+              # Create a persistent root disk image for the VM
+              echo "Creating root.qcow2 as disk-backed root with size ${toString size}"
+              ${pkgs.qemu}/bin/qemu-img create -f qcow2 root.qcow2 ${toString size}
+              # Convert to raw and format it with ext4, then convert back to qcow2
+              truncate -s ${toString size} root.raw
+              ${pkgs.e2fsprogs}/bin/mkfs.ext4 -F root.raw
+              ${pkgs.qemu}/bin/qemu-img convert -f raw -O qcow2 root.raw root.qcow2
+              rm root.raw
+
               # Run disko-create
               ${config.system.build.formatScript}
               # Run disko-mount
               ${config.system.build.mountScript}
 
               # Install NixOS
-
               export NIX_STATE_DIR=$TMPDIR/state
               nix-store --load-db < ${closureInfo}/registration
 
@@ -216,7 +222,6 @@ let
 
               # Disconnect all volume groups
               # for zpool in ''${toString ( builtins.attrNames (lib.attrValues config.disko.devices.zpool))}; do
-
               # done
             ''
           )
