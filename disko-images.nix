@@ -23,7 +23,6 @@ let
   };
 in
 {
-  system.build.diskoImages = diskoImages.images;
   options.diskoImages = {
     compress = mkOption {
       default = true;
@@ -67,4 +66,7 @@ in
     };
   };
 
+  config = {
+    system.build.diskoPartyImages = diskoImages.images;
+  };
 }
